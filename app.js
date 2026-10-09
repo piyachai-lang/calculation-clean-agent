@@ -1,6 +1,12 @@
 const $=id=>document.getElementById(id);
 const ids=['project','room','width','length','height','fireClass','temp','reserve','fillPercent'];
 let result=null;
+let pdfUrl=null;
+function clearPdf(){
+ if(pdfUrl){URL.revokeObjectURL(pdfUrl);pdfUrl=null;}
+ $('pdfLinks').hidden=true;
+ $('pdfStatus').textContent='';
+}
 const get=()=>Object.fromEntries(ids.map(id=>[id,$(id).value]));
 const sameInputs=(a,b)=>ids.every(id=>String(a[id])===String(b[id]));
 function saveDraft(calculated=false){
@@ -35,6 +41,7 @@ function showTank(t,mass){
 }
 
 function clearResult(){
+ clearPdf();
  result=null;
  ['mass','volume','area','concentration','base'].forEach(id=>$(id).textContent='—');
  $('detail').textContent='ยังไม่มีผลการคำนวณ';
@@ -50,6 +57,7 @@ function clearResult(){
 function run(){
  try{
   const x=get(), y=calculate(x), tank=selectTanks(y.mass,x.fillPercent);
+  clearPdf();
   result={x,y,tank};
   $('error').textContent='';
   $('toast').textContent='คำนวณแล้ว: ปริมาตร '+f(y.volume,0)+' ม³ • สาร '+f(y.mass,0)+' กก.';
@@ -98,7 +106,20 @@ $('reset').onclick=()=>{
  clearResult();updateFillLimits();$('error').textContent='';$('toast').textContent='ล้างทุกช่องและผลคำนวณแล้ว';
  try{localStorage.removeItem('fk-inputs-v1');localStorage.removeItem('fk-draft-v2')}catch{}
 };
-$('print').onclick=()=>{if(result)window.print()};
+$('print').onclick=()=>{
+ if(!result)return;
+ try{
+  clearPdf();
+  const blob=buildReportPdf(result);
+  pdfUrl=URL.createObjectURL(blob);
+  const filename='FK-Report-'+new Date().toISOString().slice(0,10)+'-'+result.y.mass+'kg.pdf';
+  $('pdfDownload').href=pdfUrl;$('pdfDownload').download=filename;
+  $('pdfOpen').href=pdfUrl;
+  $('pdfLinks').hidden=false;
+  $('pdfStatus').textContent='สร้าง PDF แล้ว หากยังไม่ดาวน์โหลด ให้กด “บันทึกไฟล์ PDF” หรือ “เปิด PDF” ด้านล่าง';
+  $('pdfDownload').click();
+ }catch(e){$('pdfStatus').textContent='สร้าง PDF ไม่สำเร็จ: '+e.message;}
+};
 $('copy').onclick=async()=>{
  if(!result)return;
  const {x,y,tank}=result;
