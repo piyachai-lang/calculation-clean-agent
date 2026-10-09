@@ -3,6 +3,7 @@
  */
 function buildReportPdf(snapshot){
  const {x,y,tank}=snapshot;
+ const agent=y.agent||'FK',co2=agent==='CO2',info=AGENTS[agent];
  const W=1240,H=1754,L=76,R=1164,BOTTOM=1635;
  const pages=[];let canvas,ctx,cursor;
  const number=(n,d=2)=>Number(n).toLocaleString('th-TH',{maximumFractionDigits:d});
@@ -13,8 +14,8 @@ function buildReportPdf(snapshot){
   canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;ctx=canvas.getContext('2d');
   if(!ctx)throw Error('เบราว์เซอร์นี้ไม่รองรับการสร้างรายงาน');
   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);pages.push(canvas);
-  line('FK Calculator',L,58,34,'#215cc5',true);
-  line('รายงานคำนวณสารดับเพลิง FK-5-1-12 / Novec 1230',L,111,29,'#183452',true);
+  line('Fire Agent Calculator',L,58,34,'#215cc5',true);
+  line('รายงานคำนวณสารดับเพลิง '+info.name,L,111,29,'#183452',true);
   line('วันที่จัดทำ '+date,L,160,21,'#63758a');
   ctx.fillStyle='#dce7f2';ctx.fillRect(L,203,R-L,2);cursor=233;
  }
@@ -47,28 +48,41 @@ function buildReportPdf(snapshot){
  heading('1. ข้อมูลห้องและเงื่อนไข');
  row('กว้าง × ยาว × สูง',x.width+' × '+x.length+' × '+x.height+' เมตร');
  row('พื้นที่ / ปริมาตรที่ใช้',number(y.area,0)+' ม² / '+number(y.volume,0)+' ม³ (ปัดขึ้น)');
- row('Class / ความเข้มข้น',x.fireClass+' / '+number(y.c)+'%');
- row('อุณหภูมิ',x.temp+' °C');row('ปริมาณเผื่อ',x.reserve+'%');
- row('เพดานเติมถัง',x.fillPercent+'% ของค่าสูงสุดในตาราง');
+ if(co2){
+  row('f1 / f2',x.f1+' ม³/กก. / '+x.f2+' กก./ม³');
+  row('พื้นที่ 5 ด้าน',number(y.surface,0)+' ม²');
+  row('ช่องเปิด / พื้นที่ช่องเปิด',x.openingPercent+'% / '+number(y.opening,6)+' ม²');
+  row('สารเพิ่ม (5 กก./ม²)',number(y.extra,6)+' กก.');
+ }else{
+  row('Class / ความเข้มข้น',x.fireClass+' / '+number(y.c)+'%');
+  row('อุณหภูมิ',x.temp+' °C');row('ปริมาณเผื่อ',x.reserve+'%');
+ }
+ if(agent==='FK')row('เพดานเติมถัง',x.fillPercent+'% ของค่าสูงสุดในตาราง');
  heading('2. ผลการคำนวณ');
  need(96);ctx.fillStyle='#e9f7f0';ctx.fillRect(L,cursor,R-L,82);
- line('ปริมาณสารที่ต้องใช้',L+18,cursor+24,28,'#205e4b',true);
- line(number(y.mass,0)+' กก.',770,cursor+13,44,'#18765a',true);cursor+=105;
+ line(co2?'ปริมาณสาร W1 (V / f1)':'ปริมาณสารที่ต้องใช้',L+18,cursor+24,28,'#205e4b',true);
+ const massText=number(y.mass,6)+' กก.';
+ let massFont=44;font(massFont,true);while(ctx.measureText(massText).width>430&&massFont>18){massFont-=2;font(massFont,true);}
+ line(massText,R-18-ctx.measureText(massText).width,cursor+18,massFont,'#18765a',true);cursor+=105;
  if(tank){
-  row('ถังที่เลือก',number(tank.liters,0)+' ลิตร จำนวน '+number(tank.count,0)+' ถัง');
+  row('ถังที่เลือก',number(tank.liters)+' ลิตร จำนวน '+number(tank.count,0)+' ถัง');
+  if(tank.kind==='fixed'){
+   row('สารต่อถัง / รวม',number(tank.perTank)+' กก. / '+number(tank.perTank*tank.count)+' กก.');
+   if(co2){row('ปริมาณสาร W2 (V × f2)',number(y.mass2,6)+' กก.');row('จำนวนถังตาม W2',number(y.count2,0)+' ถัง / รวม '+number(tank.perTank*y.count2)+' กก.');}
+  }else{
   row('ช่วงเติมต่อถัง',number(tank.min)+' - '+number(tank.effectiveMax,5)+' กก.');
   row('ค่าสูงสุดหลังปรับ',number(tank.max)+' × '+number(tank.fillPercent)+'% = '+number(tank.effectiveMax,5)+' กก.');
   row('การแบ่งสาร',tank.fills.map(v=>number(v.count,0)+' ถัง × '+number(v.kg)+' กก.').join(' + '));
+  }
  }else paragraph('ไม่มีถังที่ตรงช่วงเติมสำหรับปริมาณสารและเปอร์เซ็นต์ที่ระบุ กรุณาตรวจสอบก่อนเลือกถัง',24,'#9b542b');
  heading('3. รายละเอียดและแหล่งอ้างอิง');
- paragraph('S = '+y.s.toFixed(6)+' m³/kg    factor = '+y.factor.toFixed(9)+' kg/m³',22);
- paragraph('W = ROUNDUP('+y.volume+' × '+y.factor.toFixed(9)+' × '+(1+(+x.reserve)/100)+', 0) = '+y.mass+' kg',22);
- paragraph('สูตรสาร: DesignFireSup-20261002.xlsx, Sheet FK\nข้อมูลถัง: ตารางที่ผู้ใช้ให้มา (25 - 127 ลิตร)',21);
- paragraph('เลือกจำนวนถังน้อยที่สุดก่อน แล้วเลือกขนาดเล็กที่สุดที่รองรับได้ โดยทุกถังอยู่ในช่วงเติมที่กำหนด',21);
+ paragraph(calculationText(x,y),22);
+ paragraph('สูตรสาร: DesignFireSup-20261002.xlsx, Sheet '+info.sheet+(agent==='FK'?'\nข้อมูลถัง: ตารางที่ผู้ใช้ให้มา (25 - 127 ลิตร)':agent==='IG100'?'\nข้อมูลถัง: U13:V14 (80 ลิตร = 24.68 กก., 140 ลิตร = 43.18 กก.)':'\nข้อมูลถัง: T9:U9 (67.5 ลิตร = 45.9 กก.)'),21);
+ paragraph(agent==='FK'?'เลือกจำนวนถังน้อยที่สุดก่อน แล้วเลือกขนาดเล็กที่สุดที่รองรับได้ โดยทุกถังอยู่ในช่วงเติมที่กำหนด':'จำนวนถัง = ROUNDUP(ปริมาณสาร / สารต่อถัง, 0) ตาม Excel',21);
  paragraph('ตรวจสอบข้อกำหนดของผู้ผลิตและมาตรฐานของโครงการก่อนนำไปออกแบบระบบ',21);
  const images=pages.map((page,index)=>{
   ctx=page.getContext('2d');ctx.fillStyle='#dce7f2';ctx.fillRect(L,1660,R-L,2);
-  line('FK Calculator | '+y.mass+' kg',L,1682,19,'#6b7e91');
+  line(info.name+' | '+number(y.mass,6)+' kg'+(co2?' (W1)':''),L,1682,19,'#6b7e91');
   line('หน้า '+(index+1)+' / '+pages.length,1020,1682,19,'#6b7e91');
   const binary=atob(page.toDataURL('image/jpeg',0.94).split(',')[1]);
   return Uint8Array.from(binary,ch=>ch.charCodeAt(0));
